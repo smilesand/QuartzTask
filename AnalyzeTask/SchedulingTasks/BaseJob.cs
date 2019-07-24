@@ -8,6 +8,10 @@ using System.Threading.Tasks;
 using AnalyzeTask.Tool;
 using Quartz.Impl;
 using System.Configuration;
+using AnalyzeTask.QuartzPack;
+using Quartz.Impl.Matchers;
+using AnalyzeTask.Tool.Dapper;
+using System.Data;
 
 namespace AnalyzeTask.SchedulingTasks
 {
@@ -16,20 +20,21 @@ namespace AnalyzeTask.SchedulingTasks
     /// </summary>
     public abstract class BaseJob : IJob
     {
-        public static IScheduler CurrentSched { get; private set; }
-        public static ILogger log = new LoggerConfiguration().MinimumLevel.Debug().WriteTo.Console().WriteTo.File("logs\\Log.txt", rollingInterval: RollingInterval.Day).CreateLogger();
-        public ITrigger cronTrigger = TriggerBuilder.Create().WithIdentity(Guid.NewGuid().ToString(), "default").StartNow().WithCronSchedule(ConfigurationManager.AppSettings["Cron"]).Build();
-        private static List<IJobDetail> jobDetails = new List<IJobDetail>();
-        private static List<ITrigger> cronTriggers = new List<ITrigger>();
-        public string TaskName { get; set; }
+        private static IScheduler CurrentSched { get; set; }
+        protected static ILogger log = new LoggerConfiguration().MinimumLevel.Debug().WriteTo.Console().WriteTo.File("logs\\Log.txt", rollingInterval: RollingInterval.Day).CreateLogger();
+        protected ITrigger cronTrigger = TriggerBuilder.Create().WithIdentity(Guid.NewGuid().ToString(), JobKey.DefaultGroup.ToLower()).StartNow().WithCronSchedule(ConfigurationManager.AppSettings["Cron"]).Build();
+        public static List<IJobDetail> jobDetails = new List<IJobDetail>();
+        public static List<ITrigger> cronTriggers = new List<ITrigger>();
+        protected DbContext dbContext = new DbContext();
+        protected string TaskName { get; set; }
         public static void Initialize(List<BaseJob> baseJob)
         {
             log.WriteInfomaion("日志控件加载");
             CurrentSched = CurrentSched = StdSchedulerFactory.GetDefaultScheduler();
             for (int i = 0; i < baseJob.Count; i++)
             {
-                jobDetails.Add(baseJob[i].CreateJobDetail(Guid.NewGuid().ToString(), "default"));
-                cronTriggers.Add(baseJob[i].CreateITrigger(Guid.NewGuid().ToString(), "default"));
+                jobDetails.Add(baseJob[i].CreateJobDetail(Guid.NewGuid().ToString(), JobKey.DefaultGroup.ToLower()));
+                cronTriggers.Add(baseJob[i].CreateITrigger(Guid.NewGuid().ToString(), JobKey.DefaultGroup.ToLower()));
             }
             log.WriteInfomaion("初始化完成");
         }
@@ -38,9 +43,9 @@ namespace AnalyzeTask.SchedulingTasks
             log.WriteInfomaion($"Hello");
         }
 
-        public void NextTime(IJobExecutionContext context)
+        protected void NextTime(IJobExecutionContext context)
         {
-            log.WriteInfomaion($"{TaskName}下次执行时间为：{context.NextFireTimeUtc}");
+            log.WriteInfomaion($"{TaskName}=>下次执行时间为：{context.NextFireTimeUtc}");
         }
 
         public abstract Task RunServer(Action action);
@@ -49,12 +54,15 @@ namespace AnalyzeTask.SchedulingTasks
 
         public abstract ITrigger CreateITrigger(string TriggerName, string TriggerGroup);
 
-        public static void AllRun()
+        public static void Run()
         {
             for (int i = 0; i < jobDetails.Count; i++)
             {
                 CurrentSched.ScheduleJob(jobDetails[i], cronTriggers[i]);
             }
+            GroupMatcher<JobKey> matcher = GroupMatcher<JobKey>.GroupEquals(JobKey.DefaultGroup.ToLower());
+            JobListener jobListener = new MyJobListener();
+            CurrentSched.ListenerManager.AddJobListener(jobListener, matcher);
             CurrentSched.Start();
         }
     }

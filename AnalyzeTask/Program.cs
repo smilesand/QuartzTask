@@ -20,7 +20,7 @@ namespace AnalyzeTask
                 new TestJob(),
                 new TestJob2()
             });
-            BaseJob.AllRun();
+            BaseJob.Run();
             Console.ReadKey();
         }
     }

@@ -32,7 +32,6 @@ namespace AnalyzeTask.SchedulingTasks
 
         public override Task RunServer(Action action)
         {
-            throw new Exception();
             Task task = Task.Run(action);
             return task;
         }
